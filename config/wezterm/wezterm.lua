@@ -24,6 +24,12 @@ config.use_fancy_tab_bar = true
 config.hide_tab_bar_if_only_one_tab = false
 config.tab_bar_at_bottom = false
 
+-- Keybinds, because I like to paste
+config.keys = {
+  -- Paste from system clipboard using CTRL + V
+  { key = 'v', mods = 'CTRL', action = wezterm.action.PasteFrom 'Clipboard' }
+}
+
 -- Window - no traditional title bar, but the tab strip hosts the
 -- minimize/maximize/close buttons and gives us a drag target. Resize edges
 -- still active.
