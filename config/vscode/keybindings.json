@@ -1,0 +1,12 @@
+// Place your key bindings in this file to override the defaults
+// Add your own as you discover them; this file is a starting point
+[
+  // Quick file search (matches most editors)
+  { "key": "ctrl+p", "command": "workbench.action.quickOpen" },
+
+  // Toggle integrated terminal
+  { "key": "ctrl+`", "command": "workbench.action.terminal.toggleTerminal" },
+
+  // Reveal active file in explorer
+  { "key": "ctrl+shift+e", "command": "workbench.view.explorer" }
+]

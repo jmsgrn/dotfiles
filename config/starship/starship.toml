@@ -1,0 +1,48 @@
+# Starship config. Linked via $DOTFILES/config/starship/ -> ~/.config/starship/.
+# STARSHIP_CONFIG (set in .zshenv) points starship at this file.
+# Docs: https://starship.rs/config/
+
+# Inserts a blank line between prompts
+add_newline = true
+
+# Default is 30ms which is too tight on WSL when cwd is on /mnt/c/* (the
+# 9p filesystem boundary is slow) or in deep trees (node_modules, monorepos).
+# 1000ms is generous - any module that can't decide in a second probably
+# shouldn't be in the prompt anyway.
+scan_timeout = 1000
+
+# Same for command-output-based detection (e.g. running `node --version`).
+command_timeout = 1000
+
+# Custom format - keep it minimal and informative
+format = """
+$directory\
+$git_branch\
+$git_status\
+$nodejs\
+$python\
+$rust\
+$golang\
+$cmd_duration\
+$line_break\
+$character"""
+
+[character]
+success_symbol = "[›](bold green)"
+error_symbol = "[›](bold red)"
+
+[directory]
+truncation_length = 4
+truncate_to_repo = true
+style = "bold cyan"
+
+[git_branch]
+symbol = " "
+style = "bold purple"
+
+[git_status]
+style = "bold yellow"
+
+[cmd_duration]
+min_time = 2_000
+format = " took [$duration](yellow)"

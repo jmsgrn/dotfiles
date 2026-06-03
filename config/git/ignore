@@ -1,0 +1,25 @@
+# Global gitignore - $XDG_CONFIG_HOME/git/ignore, referenced from git config
+# Things that should never end up in any repo
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Direnv / nix
+.envrc.local
+.direnv/
+
+# Local env files
+.env.local
+.env.*.local
+
+# Logs
+*.log

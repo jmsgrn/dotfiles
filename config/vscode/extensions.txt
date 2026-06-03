@@ -1,0 +1,20 @@
+# VS Code extensions - installed by install.sh via `code --install-extension`
+# One extension ID per line, # for comments
+
+# Themes
+enkia.tokyo-night
+PKief.material-icon-theme
+
+# Languages / formatters
+esbenp.prettier-vscode
+dbaeumer.vscode-eslint
+
+# Git
+eamodio.gitlens
+
+# AI / Claude
+Anthropic.claude-code
+
+# Quality of life
+EditorConfig.EditorConfig
+streetsidesoftware.code-spell-checker

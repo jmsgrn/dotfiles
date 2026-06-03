@@ -1,0 +1,54 @@
+# Global git config - $XDG_CONFIG_HOME/git/config
+# Identity (name/email) goes in ~/.config/git/config.local, which is NOT tracked
+# - keeps personal identity off the public repo
+# - lets a work machine override with work email via the same file
+
+[include]
+  path = ~/.config/git/config.local
+
+[init]
+  defaultBranch = main
+
+[pull]
+  rebase = false
+
+[push]
+  default = current
+  autoSetupRemote = true
+
+[core]
+  editor = code --wait
+  excludesfile = ~/.config/git/ignore
+
+[diff]
+  algorithm = histogram
+  colorMoved = default
+
+[merge]
+  conflictstyle = zdiff3
+
+[rerere]
+  enabled = true
+
+[color]
+  ui = auto
+
+[alias]
+  s = status
+  co = checkout
+  br = branch
+  cm = commit -m
+  last = log -1 HEAD
+  amend = commit --amend --no-edit
+  unstage = restore --staged
+  graph = log --oneline --graph --decorate --all
+
+# Use the `gh` CLI as the credential helper for github.com and gist.github.com.
+# Empty `helper =` first clears any inherited helpers; second line installs gh.
+[credential "https://github.com"]
+  helper =
+  helper = !gh auth git-credential
+
+[credential "https://gist.github.com"]
+  helper =
+  helper = !gh auth git-credential
