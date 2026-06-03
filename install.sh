@@ -565,15 +565,21 @@ set_default_shell() {
     echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
   fi
 
-  # Use `sudo chsh` so we don't trigger a second per-user PAM password prompt
-  # (sudo creds are already cached from apt). Targets $USER explicitly so this
-  # works the same way regardless of how the script was invoked.
-  if sudo chsh -s "$zsh_path" "$USER"; then
+  # Use `usermod` instead of `chsh` because chsh goes through PAM and can fail
+  # silently on some distros (Pop!_OS observed). usermod writes /etc/passwd
+  # directly. Refresh sudo creds in case they lapsed during the long apt phase.
+  sudo -v
+  if sudo usermod -s "$zsh_path" "$USER"; then
     local new_shell; new_shell="$(getent passwd "$USER" | cut -d: -f7)"
-    ok "Default shell -> $new_shell (effective on next login or in a new tab)"
-    info "Drop into zsh in this terminal right now with:  exec zsh"
+    if [[ "$new_shell" == "$zsh_path" ]]; then
+      ok "Default shell -> $new_shell (effective on next login or in a new tab)"
+      info "Drop into zsh in this terminal right now with:  exec zsh"
+    else
+      err "usermod returned 0 but /etc/passwd still says $new_shell. Investigate."
+      return 1
+    fi
   else
-    err "chsh failed. Run this by hand:  sudo chsh -s $zsh_path $USER"
+    err "usermod failed. Run this by hand:  sudo usermod -s $zsh_path $USER"
     return 1
   fi
 }
