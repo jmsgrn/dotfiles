@@ -152,6 +152,12 @@ BREW_PKGS=(
   unzip                    # used by install.sh (font extraction) and `extract` fn
 )
 
+# Homebrew casks (macOS GUI apps).
+BREW_CASKS=(
+  wezterm
+  visual-studio-code
+)
+
 # apt package list (Debian/Ubuntu/WSL). Some tools below are too old in apt -
 # those are installed via curl in LINUX_CURL_INSTALLS instead.
 APT_PKGS=(
@@ -164,7 +170,7 @@ APT_PKGS=(
 
 # Tools curl-installed on Linux because apt doesn't ship a recent version,
 # or doesn't ship them at all. macOS gets these via brew above.
-LINUX_CURL_INSTALLS=(starship zoxide eza gh nvm)
+LINUX_CURL_INSTALLS=(starship zoxide eza gh nvm wezterm vscode)
 
 install_starship() {
   command -v starship >/dev/null 2>&1 && return 0
@@ -209,6 +215,36 @@ install_nvm() {
   '
 }
 
+# WezTerm on Debian/Ubuntu/Pop via the official Fury apt repo.
+# Skipped on WSL because there WezTerm runs as a Windows process and the
+# install lives on the Windows side (with our wezterm.lua stub).
+install_wezterm() {
+  [[ "$OS" == "wsl" ]] && return 0
+  command -v wezterm >/dev/null 2>&1 && return 0
+  spin "Install WezTerm" bash -c '
+    curl -fsSL https://apt.fury.io/wez/gpg.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/wezterm-fury.gpg &&
+    echo "deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *" | sudo tee /etc/apt/sources.list.d/wezterm.list >/dev/null &&
+    sudo apt-get update -y &&
+    sudo apt-get install -y wezterm
+  '
+}
+
+# VS Code on Debian/Ubuntu/Pop via the official Microsoft apt repo.
+# Skipped on WSL because there VS Code is a Windows install and the `code`
+# command is bridged through from Windows.
+install_vscode() {
+  [[ "$OS" == "wsl" ]] && return 0
+  command -v code >/dev/null 2>&1 && return 0
+  spin "Install VS Code" bash -c '
+    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /tmp/microsoft.gpg &&
+    sudo install -D -o root -g root -m 644 /tmp/microsoft.gpg /etc/apt/keyrings/microsoft.gpg &&
+    rm /tmp/microsoft.gpg &&
+    echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" | sudo tee /etc/apt/sources.list.d/vscode.list >/dev/null &&
+    sudo apt-get update -y &&
+    sudo apt-get install -y code
+  '
+}
+
 install_prereqs() {
   info "Installing prerequisites..."
   case "$OS" in
@@ -219,6 +255,7 @@ install_prereqs() {
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
       fi
       spin "brew install ${BREW_PKGS[*]}" brew install "${BREW_PKGS[@]}"
+      spin "brew install --cask ${BREW_CASKS[*]}" brew install --cask "${BREW_CASKS[@]}"
       ;;
     linux|wsl)
       if command -v apt-get >/dev/null 2>&1; then
