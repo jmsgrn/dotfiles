@@ -215,24 +215,6 @@ install_nvm() {
   '
 }
 
-# Debian/Ubuntu/Pop ship some tools under non-canonical binary names to avoid
-# package collisions (fd -> fdfind, bat -> batcat). Tools that call them by
-# the canonical name from a non-interactive context break - e.g. fzf's
-# FZF_CTRL_T_COMMAND runs through `eval`, which skips alias expansion, so
-# `alias fd=fdfind` doesn't save us. Drop personal-bin symlinks so the
-# canonical names resolve from PATH.
-install_debian_binshims() {
-  mkdir -p "$HOME/.local/bin"
-  local pair src dst
-  for pair in "fdfind:fd" "batcat:bat"; do
-    src="${pair%%:*}"; dst="${pair##*:}"
-    if command -v "$src" >/dev/null 2>&1 && [[ ! -e "$HOME/.local/bin/$dst" ]]; then
-      ln -s "$(command -v "$src")" "$HOME/.local/bin/$dst"
-      ok "Linked ~/.local/bin/$dst -> $(command -v "$src")"
-    fi
-  done
-}
-
 # WezTerm on Debian/Ubuntu/Pop via the official Fury apt repo.
 # Skipped on WSL because there WezTerm runs as a Windows process and the
 # install lives on the Windows side (with our wezterm.lua stub).
@@ -281,7 +263,6 @@ install_prereqs() {
         sudo -v
         spin "apt-get update" sudo apt-get update -y
         spin "apt-get install ${APT_PKGS[*]}" sudo apt-get install -y "${APT_PKGS[@]}"
-        install_debian_binshims
         local tool
         for tool in "${LINUX_CURL_INSTALLS[@]}"; do
           "install_$tool"

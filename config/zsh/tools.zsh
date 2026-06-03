@@ -2,12 +2,15 @@
 # zoxide, fzf, bat - wired up with cross-platform detection
 
 # -----------------------------------------------------------------------------
-# Detect the right binary names (Ubuntu/WSL ships bat as 'batcat', fd as 'fdfind')
+# Detect the right binary names (Ubuntu/WSL ships bat as 'batcat', fd as 'fdfind').
+# Use `whence -p` not `command -v`: command -v matches aliases too, and
+# aliases.zsh runs earlier in the *.zsh loop and may have aliased bat=batcat
+# already. fzf evals these strings in a subprocess where aliases don't expand.
 # -----------------------------------------------------------------------------
 BAT_CMD=""
-if command -v bat >/dev/null 2>&1; then
+if whence -p bat >/dev/null; then
   BAT_CMD="bat"
-elif command -v batcat >/dev/null 2>&1; then
+elif whence -p batcat >/dev/null; then
   BAT_CMD="batcat"
 fi
 
@@ -58,12 +61,13 @@ if command -v eza >/dev/null 2>&1; then
   export FZF_ALT_C_OPTS="--preview 'eza --tree --color=always {} | head -200'"
 fi
 
-# Use fd for fzf if available (faster, respects .gitignore)
-if command -v fd >/dev/null 2>&1; then
+# Use fd for fzf if available (faster, respects .gitignore).
+# whence -p (not command -v) to avoid matching the fd=fdfind alias.
+if whence -p fd >/dev/null; then
   export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
   export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
   export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
-elif command -v fdfind >/dev/null 2>&1; then
+elif whence -p fdfind >/dev/null; then
   export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --follow --exclude .git'
   export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
   export FZF_ALT_C_COMMAND='fdfind --type d --hidden --follow --exclude .git'
