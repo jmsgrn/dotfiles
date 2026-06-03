@@ -35,6 +35,18 @@ If you clone somewhere other than `~/projects/dotfiles`, pre-export `DOTFILES` i
 
 `install.sh` installs prerequisites and then delegates symlinking to `dot link`. Existing config gets tarballed to `~/.dotfiles-backup/dotfiles_backup_<timestamp>.tar.gz` first. Safe to re-run.
 
+### After install: log out and back in
+
+`install.sh` switches your login shell to zsh via `usermod`, but `$SHELL` in your current desktop session was set at login and won't update until you log out and back in (or reboot). Until then, new terminals will still inherit `$SHELL=/bin/bash` even though they actually run zsh.
+
+The check that matters is:
+
+```sh
+getent passwd "$USER" | cut -d: -f7   # should print /bin/zsh
+```
+
+If that prints zsh, the install succeeded. `$SHELL` will catch up after your next desktop login.
+
 ## The `dot` CLI
 
 Day-to-day, manage symlinks with `bin/dot` (added to `$PATH` by `exports.zsh`):
