@@ -4,6 +4,25 @@ My personal cross-platform config - WezTerm, zsh, tmux, Starship, Git, VS Code. 
 
 ## Install
 
+### Prereqs
+
+`install.sh` bootstraps everything else (Homebrew on macOS, apt-installed tools on Linux/WSL, plus a handful of curl-installed binaries). It needs three things on PATH before it can run:
+
+- **`bash`** - to execute the script
+- **`git`** - to clone this repo and a couple of helpers (antidote, etc.)
+- **`curl`** - used by the Homebrew installer, starship, zoxide, eza, gh, nvm
+
+What you do *not* need: a preinstalled package manager. On macOS the script installs Homebrew if it's missing. On Debian/Ubuntu/WSL `apt-get` is always present. On other Linux distros (Fedora, Arch, etc.) the script will warn and you'll need to install the package list by hand.
+
+Quick way to get the meta-prereqs:
+
+| Platform | Command |
+|---|---|
+| macOS | `xcode-select --install` (ships git + curl) |
+| Debian/Ubuntu/WSL | `sudo apt-get update && sudo apt-get install -y git curl` |
+
+### Run it
+
 Clone anywhere you like - the repo is location-independent. My convention is `~/projects/dotfiles`:
 
 ```sh
@@ -136,7 +155,7 @@ bindkey -s '^f' '^utmux-sessionizer\n'   # Ctrl-f
 | `mkcd <dir>` | mkdir + cd in one shot |
 | `extract <file>` | extract any common archive |
 
-### VS Code (with vim extension)
+### VS Code
 
 | Key | Action |
 |---|---|
@@ -144,7 +163,6 @@ bindkey -s '^f' '^utmux-sessionizer\n'   # Ctrl-f
 | `Ctrl-Shift-P` | command palette |
 | `` Ctrl-` `` | toggle integrated terminal |
 | `Ctrl-Shift-E` | reveal in explorer |
-| `:w` (vim mode) | save file |
 
 ### WezTerm (Mac: `Cmd`, Linux/WSL: `Ctrl-Shift`)
 

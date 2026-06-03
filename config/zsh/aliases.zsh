@@ -60,7 +60,6 @@ alias ports='ss -tulpn'
 
 # Editor
 alias v='code'
-alias vim='code'  # remap until/unless nvim happens
 
 # Claude Code
 alias c='claude'

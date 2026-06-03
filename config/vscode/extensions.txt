@@ -2,19 +2,18 @@
 # One extension ID per line, # for comments
 
 # Themes
-enkia.tokyo-night
+BeardedBear.beardedtheme
 PKief.material-icon-theme
 
-# Languages / formatters
+# Formatters / linters
 esbenp.prettier-vscode
 dbaeumer.vscode-eslint
 
-# Git
-eamodio.gitlens
+# Comments / readability
+aaron-bond.better-comments
 
 # AI / Claude
 Anthropic.claude-code
 
 # Quality of life
 EditorConfig.EditorConfig
-streetsidesoftware.code-spell-checker

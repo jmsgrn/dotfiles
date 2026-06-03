@@ -1,34 +1,17 @@
 {
   "editor.fontFamily": "JetBrains Mono, Cascadia Code, Menlo, monospace",
-  "editor.fontSize": 13,
   "editor.fontLigatures": true,
-  "editor.lineHeight": 1.5,
-  "editor.minimap.enabled": false,
-  "editor.rulers": [80, 120],
-  "editor.tabSize": 2,
   "editor.formatOnSave": true,
-  "editor.cursorBlinking": "smooth",
-  "editor.cursorSmoothCaretAnimation": "on",
+  "editor.tabSize": 2,
+
+  "workbench.colorTheme": "Bearded Theme Arc Black",
+  "workbench.iconTheme": "material-icon-theme",
+
 
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
   "files.trimFinalNewlines": true,
 
-  "workbench.colorTheme": "Tokyo Night",
-  "workbench.iconTheme": "material-icon-theme",
-  "workbench.startupEditor": "none",
-
-  "terminal.integrated.fontFamily": "JetBrains Mono",
-  "terminal.integrated.fontSize": 13,
   "terminal.integrated.defaultProfile.linux": "zsh",
-  "terminal.integrated.defaultProfile.osx": "zsh",
-
-  "git.confirmSync": false,
-  "git.autofetch": true,
-  "git.enableSmartCommit": true,
-
-  "vim.useSystemClipboard": true,
-  "vim.easymotion": true,
-  "vim.incsearch": true,
-  "vim.hlsearch": true
+  "terminal.integrated.defaultProfile.osx": "zsh"
 }

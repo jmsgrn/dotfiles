@@ -93,6 +93,33 @@ spin() {
 trap 'printf "\033[?25h"' EXIT INT TERM
 
 # -----------------------------------------------------------------------------
+# 0. Preflight - bail loudly if the meta-prereqs aren't on PATH.
+#
+# `bash` and a writable $HOME are taken for granted (we're running). Everything
+# below assumes `git` (cloning antidote, etc.) and `curl` (Homebrew bootstrap,
+# starship/zoxide/eza installers). If either is missing we fail fast with a
+# platform-specific hint, instead of crashing partway through with a less
+# obvious error.
+# -----------------------------------------------------------------------------
+check_prereqs() {
+  local missing=()
+  command -v git  >/dev/null 2>&1 || missing+=(git)
+  command -v curl >/dev/null 2>&1 || missing+=(curl)
+  (( ${#missing[@]} == 0 )) && return 0
+
+  err "Missing required tool(s): ${missing[*]}"
+  err "install.sh needs these on the PATH before it can bootstrap anything."
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    err "On macOS:  xcode-select --install   (ships git + curl)"
+  elif [[ -r /etc/os-release ]] && grep -qiE 'debian|ubuntu' /etc/os-release; then
+    err "On Debian/Ubuntu/WSL:  sudo apt-get update && sudo apt-get install -y ${missing[*]}"
+  else
+    err "Install them via your platform's package manager, then re-run."
+  fi
+  exit 1
+}
+
+# -----------------------------------------------------------------------------
 # 1. OS detect
 # -----------------------------------------------------------------------------
 detect_os() {
@@ -511,6 +538,7 @@ set_default_shell() {
 # -----------------------------------------------------------------------------
 main() {
   info "Bootstrapping dotfiles from $DOTFILES_DIR"
+  check_prereqs
   detect_os
   install_prereqs
   chmod +x "$DOTFILES_DIR/bin/"* 2>/dev/null || true
