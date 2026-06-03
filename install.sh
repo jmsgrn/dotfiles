@@ -499,38 +499,46 @@ EOF
 # 8. Default shell -> zsh
 # -----------------------------------------------------------------------------
 set_default_shell() {
-  if [[ "$SHELL" == *"zsh"* ]]; then
-    ok "zsh is already the default shell"
+  # Authoritative check - $SHELL is the env var, /etc/passwd is the truth.
+  local current_shell
+  current_shell="$(getent passwd "$USER" 2>/dev/null | cut -d: -f7)"
+  current_shell="${current_shell:-$SHELL}"
+  if [[ "$current_shell" == *"zsh"* ]]; then
+    ok "zsh is already the login shell ($current_shell)"
     return
   fi
 
-  # Heads-up if the user has bash config that won't follow them into zsh.
-  # We back the files up above, but the aliases/functions/exports themselves
-  # need to be ported - that's a manual step.
-  if [[ "$SHELL" == *"bash"* ]]; then
-    local bash_rc_size=0
-    [[ -f "$HOME/.bashrc" ]] && bash_rc_size=$(wc -c <"$HOME/.bashrc")
-    if (( bash_rc_size > 4096 )); then
-      warn "You're on bash with a non-trivial ~/.bashrc ($bash_rc_size bytes)."
-      warn "Aliases, functions, and exports there will NOT be carried over to zsh."
-      warn "Snapshot is at ~/.dotfiles-backup/shell_configs_*.tar.gz - port what you need"
-      warn "into ~/.config/zsh/local.zsh (gitignored) or the tracked zsh files."
-      if [[ -t 0 ]]; then
-        read -r -p "  Switch default shell to zsh anyway? [y/N] " reply
-        case "$reply" in
-          [yY]|[yY][eE][sS]) ;;
-          *) warn "Skipped chsh. Re-run install.sh once you've ported your bash config."; return ;;
-        esac
-      fi
+  # Heads-up if the user has substantive bash config that won't follow them.
+  # The pre-install snapshot already captured everything to ~/.dotfiles-backup/,
+  # so this is informational, not a gate.
+  if [[ "$current_shell" == *"bash"* && -f "$HOME/.bashrc" ]]; then
+    local bash_rc_size; bash_rc_size=$(wc -c <"$HOME/.bashrc")
+    if (( bash_rc_size > 8192 )); then
+      echo
+      warn "Your ~/.bashrc is $bash_rc_size bytes - aliases/functions/exports there"
+      warn "will NOT auto-port into zsh. Snapshot is at ~/.dotfiles-backup/"
+      warn "shell_configs_*.tar.gz; port what you need into ~/.config/zsh/local.zsh"
+      warn "(gitignored) or the tracked zsh files. Continuing with chsh anyway."
+      echo
     fi
   fi
 
   local zsh_path; zsh_path="$(command -v zsh)"
-  if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
+  if ! grep -q "^${zsh_path}$" /etc/shells 2>/dev/null; then
     echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
   fi
-  chsh -s "$zsh_path"
-  ok "Default shell set to zsh (takes effect next login)"
+
+  # Use `sudo chsh` so we don't trigger a second per-user PAM password prompt
+  # (sudo creds are already cached from apt). Targets $USER explicitly so this
+  # works the same way regardless of how the script was invoked.
+  if sudo chsh -s "$zsh_path" "$USER"; then
+    local new_shell; new_shell="$(getent passwd "$USER" | cut -d: -f7)"
+    ok "Default shell -> $new_shell (effective on next login or in a new tab)"
+    info "Drop into zsh in this terminal right now with:  exec zsh"
+  else
+    err "chsh failed. Run this by hand:  sudo chsh -s $zsh_path $USER"
+    return 1
+  fi
 }
 
 # -----------------------------------------------------------------------------
