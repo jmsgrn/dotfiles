@@ -6,7 +6,7 @@ My personal cross-platform config - WezTerm, zsh, tmux, Starship, Git, VS Code. 
 
 ### Prereqs
 
-`install.sh` bootstraps everything else (Homebrew on macOS, apt-installed tools on Linux/WSL, plus a handful of curl-installed binaries). It needs three things on PATH before it can run:
+`dot init` bootstraps everything else (Homebrew on macOS, apt-installed tools on Linux/WSL, plus a handful of curl-installed binaries). It needs three things on PATH before it can run:
 
 - **`bash`** - to execute the script
 - **`git`** - to clone this repo and a couple of helpers (antidote, etc.)
@@ -37,7 +37,7 @@ You can clone elsewhere, but then pre-export `DOTFILES` and Stow needs an explic
 
 ### After install: log out and back in
 
-`install.sh` switches your login shell to zsh via `usermod`, but `$SHELL` in your current desktop session was set at login and won't update until you log out and back in (or reboot). Until then, new terminals will still inherit `$SHELL=/bin/bash` even though they actually run zsh.
+`dot init` switches your login shell to zsh via `usermod`, but `$SHELL` in your current desktop session was set at login and won't update until you log out and back in (or reboot). Until then, new terminals will still inherit `$SHELL=/bin/bash` even though they actually run zsh.
 
 The check that matters is:
 
@@ -66,6 +66,32 @@ If that prints zsh, the install succeeded. `$SHELL` will catch up after your nex
 
 **Packages** live as plain one-per-line files in `bin/packages/` (`brew.txt`, `brew-cask.txt`, `apt.txt`, `curl.txt`); `dot add`/`remove` edit them. **Configs**: drop a file under `home/` mirroring its place in `$HOME` (e.g. `home/.config/foo/` → `~/.config/foo/`), then `dot link` - Stow folds directories automatically.
 
+### Examples
+
+```sh
+# bootstrap a fresh machine: install packages, link configs, set up zsh
+./dot init
+
+# add a tool — installs it now AND records it in the manifest for next time
+dot add ripgrep          # OS package (apt on Linux, brew on macOS)
+dot add pi               # custom installer (bun/npm) — routed automatically
+
+# what's tracked, and is it installed here?
+dot list
+
+# upgrade packages, git pull the repo, then relink
+dot update
+
+# relink after editing the home/ tree (idempotent; safe to re-run)
+dot link
+
+# health check: prereqs, every tracked file's symlink, missing packages
+dot doctor
+
+# drop a tool from the manifest (uninstalls it where possible)
+dot remove ripgrep
+```
+
 ## What's inside
 
 - **WezTerm** - cross-platform GPU terminal, single Lua config
@@ -73,7 +99,7 @@ If that prints zsh, the install succeeded. `$SHELL` will catch up after your nex
 - **Starship** - cross-shell prompt
 - **tmux** - persistent sessions with vim-style splits and the Primeagen `tmux-sessionizer`. Config at `$XDG_CONFIG_HOME/tmux/tmux.conf` (tmux 3.1+).
 - **Modern CLI tools** - `zoxide` (smart cd), `fzf` (fuzzy finder), `bat` (cat with colors), `eza` (modern ls), `fd` (modern find), `ripgrep`
-- **Git** - sensible defaults at `$XDG_CONFIG_HOME/git/config`, global gitignore at `$XDG_CONFIG_HOME/git/ignore`. Identity is kept in untracked `~/.config/git/config.local` (created by `install.sh`).
+- **Git** - sensible defaults at `$XDG_CONFIG_HOME/git/config`, global gitignore at `$XDG_CONFIG_HOME/git/ignore`. Identity is kept in untracked `~/.config/git/config.local` (created by `dot init`).
 - **VS Code** - settings, keybindings, and an `extensions.txt` that gets auto-installed
 
 ## Layout
@@ -82,26 +108,33 @@ GNU Stow mirrors everything under `home/` into `$HOME` (folding directories as n
 
 ```
 .dotfiles/
-├── install.sh             # bootstrap: prereqs (incl. stow) + dot link + antidote + VS Code
+├── dot                       # entry point (symlink → bin/dot)
 ├── README.md
 ├── LICENSE
 ├── bin/
-│   ├── dot                # GNU Stow wrapper: link / unlink / backup / clean
-│   ├── lib/common.sh
+│   ├── dot                   # the package + dotfiles manager (GNU Stow under the hood)
+│   ├── lib/
+│   │   ├── packages.sh       # reads the package manifest into arrays
+│   │   └── bootstrap.sh      # OS detect, installers, fonts, shell setup (init/update)
+│   ├── packages/             # the manifest — one package per line
+│   │   ├── brew.txt          # macOS: brew install
+│   │   ├── brew-cask.txt     # macOS: brew install --cask
+│   │   ├── apt.txt           # Linux/WSL: apt-get install
+│   │   └── curl.txt          # custom installers (starship, eza, nvm, pi, …)
 │   └── tmux-sessionizer
-├── assets/                # fonts + wallpapers (installed by install.sh, not stowed)
-└── home/                  # the Stow package — mirrors $HOME
-    ├── .zshenv            # sets ZDOTDIR, then sources $ZDOTDIR/.zshenv
+├── assets/                   # fonts + wallpapers (installed by `dot init`, not stowed)
+└── home/                     # the Stow package — mirrors $HOME
+    ├── .zshenv               # sets ZDOTDIR, then sources $ZDOTDIR/.zshenv
     └── .config/
-        ├── zsh/           # .zshenv (env/PATH), .zshrc, .zsh_plugins.txt, aliases/functions/exports/tools.zsh
-        ├── git/           # config, ignore (identity in untracked config.local)
-        ├── tmux/          # tmux.conf
-        ├── wezterm/       # wezterm.lua
-        ├── starship/      # starship.toml (STARSHIP_CONFIG points here)
-        └── Code/User/     # settings.json, keybindings.json, extensions.txt
+        ├── zsh/              # .zshenv (env/PATH), .zshrc, .zsh_plugins.txt, aliases/functions/exports/tools.zsh
+        ├── git/             # config, ignore (identity in untracked config.local)
+        ├── tmux/            # tmux.conf
+        ├── wezterm/         # wezterm.lua
+        ├── starship/        # starship.toml (STARSHIP_CONFIG points here)
+        └── Code/User/       # settings.json, keybindings.json, extensions.txt
 ```
 
-`dot link` (i.e. `stow home`) symlinks `home/.config/zsh` → `~/.config/zsh`, `home/.zshenv` → `~/.zshenv`, and so on. On macOS, VS Code config is *additionally* linked into `~/Library/Application Support/Code/User/` by `install.sh`, since Stow only covers `~/.config`.
+`dot link` (i.e. `stow home`) symlinks `home/.config/zsh` → `~/.config/zsh`, `home/.zshenv` → `~/.zshenv`, and so on. On macOS, VS Code config is *additionally* linked into `~/Library/Application Support/Code/User/` by `dot init`, since Stow only covers `~/.config`.
 
 ## Shortcuts and aliases I actually use
 
@@ -201,7 +234,7 @@ These files get sourced if present, ignored if missing - your secrets / work ide
 
 | File | What it's for |
 |---|---|
-| `~/.config/git/config.local` | git user.name / user.email (created by install.sh) |
+| `~/.config/git/config.local` | git user.name / user.email (created by `dot init`) |
 | `~/.config/zsh/work.zsh` | work-only aliases/paths/env (drop a real file here on the work box) |
 | `~/.config/zsh/*.local.zsh` | any per-machine zsh you want sourced |
 
