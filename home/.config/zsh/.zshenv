@@ -3,7 +3,7 @@
 
 # Path to this dotfiles repo. Edit if you cloned elsewhere, or pre-export
 # DOTFILES in your environment to override.
-export DOTFILES="${DOTFILES:-$HOME/projects/dotfiles}"
+export DOTFILES="${DOTFILES:-$HOME/.dotfiles}"
 
 # PATH lives here (not in exports.zsh) because aliases.zsh runs BEFORE exports
 # in the .zshrc *.zsh loop, and its `command -v eza` / `command -v zoxide`

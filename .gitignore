@@ -10,13 +10,13 @@
 # Machine-specific zsh overrides, sourced by the *.zsh glob in config/zsh/.zshrc.
 # Live alongside the tracked aliases.zsh / functions.zsh / etc. so they get picked
 # up automatically - this is where secrets and per-host tweaks go.
-config/zsh/local.zsh
-config/zsh/work.zsh
+home/.config/zsh/local.zsh
+home/.config/zsh/work.zsh
 
 # Antidote/zsh runtime cruft - generated, never committed.
-config/zsh/.zcompdump*
-config/zsh/.zsh_history
-config/zsh/.zsh_plugins.zsh
+home/.config/zsh/.zcompdump*
+home/.config/zsh/.zsh_history
+home/.config/zsh/.zsh_plugins.zsh
 
 # Common noise
 .DS_Store
@@ -25,3 +25,10 @@ config/zsh/.zsh_plugins.zsh
 # Claude Code per-project settings - auto-created when permissions are approved
 # in this directory. Local-only, never meant to ship.
 .claude/
+
+# machine-local + runtime (path-independent, robust to layout changes)
+local.zsh
+work.zsh
+.zsh_history
+.zcompdump*
+.zsh_plugins.zsh

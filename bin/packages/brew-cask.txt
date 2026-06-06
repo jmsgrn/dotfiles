@@ -1,0 +1,3 @@
+# macOS GUI apps installed with `brew install --cask`. One per line.
+wezterm
+visual-studio-code

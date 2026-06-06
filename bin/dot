@@ -1,283 +1,268 @@
 #!/usr/bin/env bash
 #
-# dot - manage this dotfiles repo's symlinks and backups.
+# dot - a cross-platform package + dotfiles manager.
 #
-# Conventions:
-#   $DOTFILES/config/<pkg>/   →  $XDG_CONFIG_HOME/<pkg>     (whole-dir symlink)
-#   $DOTFILES/home/<file>     →  $HOME/<file>               (per-file symlink)
+#   Bootstrap a machine, manage the package manifest, and symlink configs
+#   (via GNU Stow). Package lists live in bin/packages/*.txt; install logic in
+#   bin/lib/bootstrap.sh.
 #
-# Subcommands:
-#   help                 show this help
-#   link    [-f] [pkg]   create symlinks; -f/--force removes existing files first
-#   unlink  [pkg|all]    remove our symlinks (default: all)
-#   backup               tar up the files we would replace, into ~/.dotfiles-backup/
+# Commands:
+#   init                 full bootstrap: install packages, link configs, set up shell
+#   add <pkg>            install <pkg> and add it to the manifest
+#   remove <pkg>         uninstall <pkg> and drop it from the manifest
+#   update               upgrade packages + git pull + relink
+#   list                 show the package manifest with install status
+#   link [-f|--force]    stow home/ into $HOME
+#   unlink               remove our symlinks
+#   backup               tar files stow would conflict with into ~/.dotfiles-backup/
 #   clean                remove broken symlinks pointing into $DOTFILES
+#   doctor               health check
+#   help                 show this help
 
 set -Eeuo pipefail
 
-# -----------------------------------------------------------------------------
-# Bootstrap: locate the repo and source shared helpers.
-# -----------------------------------------------------------------------------
-# Resolve where this script lives, even if invoked via a symlink on PATH.
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-
-# $DOTFILES = parent of bin/. Respect a pre-set value if the user has one.
 : "${DOTFILES:=$(cd "$SCRIPT_DIR/.." && pwd)}"
 export DOTFILES
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
-XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+# shellcheck source=lib/packages.sh
+source "$SCRIPT_DIR/lib/packages.sh"
+# shellcheck source=lib/bootstrap.sh   (provides logging, spin, detect_os, installers, ...)
+source "$SCRIPT_DIR/lib/bootstrap.sh"
 
-# shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+PKG="home"   # the Stow package: $DOTFILES/home/ mirrors $HOME
 
-# -----------------------------------------------------------------------------
-# Usage
-# -----------------------------------------------------------------------------
+require_stow() {
+  command -v stow >/dev/null 2>&1 && return 0
+  err "GNU Stow is not installed."
+  [[ "$OSTYPE" == darwin* ]] && err "  brew install stow" || err "  sudo apt-get install stow"
+  exit 1
+}
+
 usage() {
   cat <<EOF
 
-  $(fmt_cmd dot) $(printf "%s" "${DIM}<command> [args]${RESET}")
+  dot <command> [args]    cross-platform package + dotfiles manager
+                          (repo: ${DOTFILES/#$HOME/~})
 
-  Manage symlinks for the dotfiles repo at $(fmt_path "$(home_tilde "$DOTFILES")").
+  Setup
+    init                  full bootstrap: packages + link + antidote + shell
+    add <pkg>             install <pkg> and add it to the manifest
+    remove <pkg>          uninstall <pkg> and drop it from the manifest
+    update                upgrade packages + git pull + relink
+    list                  show the package manifest with install status
 
-  ${BOLD}Commands${RESET}
-    $(fmt_cmd help)                       show this help
-    $(fmt_cmd link)    ${DIM}[-f|--force] [pkg]${RESET}   link config/ and home/ (force replaces existing)
-    $(fmt_cmd unlink)  ${DIM}[pkg|all]${RESET}            remove our symlinks
-    $(fmt_cmd backup)                     tar files we'd replace into ~/.dotfiles-backup/
-    $(fmt_cmd clean)                      remove broken symlinks pointing into \$DOTFILES
+  Symlinks (GNU Stow)
+    link [-f|--force]     stow home/ into \$HOME (re-runnable; --force replaces conflicts)
+    unlink                remove our symlinks
+    backup                tar conflicting files into ~/.dotfiles-backup/
+    clean                 remove broken symlinks pointing into \$DOTFILES
 
-  ${BOLD}Layout${RESET}
-    \$DOTFILES/config/<pkg>/ → \$XDG_CONFIG_HOME/<pkg>
-    \$DOTFILES/home/<file>   → \$HOME/<file>
+  Maintenance
+    doctor                health check
+    help                  this help
 
 EOF
 }
 
-# Packages under config/ that `dot` does NOT manage - their destinations are
-# OS-specific or non-XDG, so install.sh handles them with its own glue.
-SKIP_PKGS=(vscode)
-
-is_skipped() {
-  local name="$1" skip
-  for skip in "${SKIP_PKGS[@]}"; do
-    [[ "$name" == "$skip" ]] && return 0
-  done
-  return 1
+# ----------------------------------------------------------------------------- Stow
+conflicts() {
+  stow -n -v -d "$DOTFILES" -t "$HOME" "$PKG" 2>&1 \
+    | sed -n 's/.*existing target is not owned by stow: //p'
 }
 
-# -----------------------------------------------------------------------------
-# Enumerate what we manage.
-#
-# Emits one "<src>\t<dest>\t<label>" line per linkable entry on stdout.
-# Filtered by $1 (pkg name) if provided and not "all".
-# -----------------------------------------------------------------------------
-enumerate() {
-  local filter="${1:-all}"
-
-  # config/<pkg>/ → $XDG_CONFIG_HOME/<pkg>
-  if [[ -d "$DOTFILES/config" ]]; then
-    local d name
-    for d in "$DOTFILES/config"/*/; do
-      [[ -d "$d" ]] || continue
-      name="$(basename "$d")"
-      # Skip packages with non-XDG destinations (handled by install.sh).
-      # When the user explicitly names one, still skip - but make it visible.
-      if is_skipped "$name"; then
-        if [[ "$filter" == "$name" ]]; then
-          log_warn "$name: handled by install.sh (non-XDG destination) - skipping"
-        fi
-        continue
-      fi
-      if [[ "$filter" == "all" || "$filter" == "$name" ]]; then
-        printf "%s\t%s\t%s\n" "${d%/}" "$XDG_CONFIG_HOME/$name" "$name"
-      fi
-    done
-  fi
-
-  # home/<file> → $HOME/<file>  (dotfiles included)
-  if [[ -d "$DOTFILES/home" ]]; then
-    local entry name
-    shopt -s dotglob nullglob
-    for entry in "$DOTFILES/home"/*; do
-      name="$(basename "$entry")"
-      [[ "$name" == "." || "$name" == ".." || "$name" == ".DS_Store" ]] && continue
-      if [[ "$filter" == "all" || "$filter" == "$name" || "$filter" == "${name#.}" ]]; then
-        printf "%s\t%s\t%s\n" "$entry" "$HOME/$name" "$name"
-      fi
-    done
-    shopt -u dotglob nullglob
-  fi
-}
-
-# -----------------------------------------------------------------------------
-# link / unlink
-# -----------------------------------------------------------------------------
-do_link() {
-  local src="$1" dest="$2" label="$3" force="${4:-0}"
-  local display; display="$(home_tilde "$dest")"
-
-  if [[ -L "$dest" && "$(readlink "$dest")" == "$src" ]]; then
-    printf "  %s%s%s %-22s %s→ %s%s\n" "$DIM" "·" "$RESET" "$label" "$DIM" "$display already linked" "$RESET"
-    return
-  fi
-  if [[ -e "$dest" || -L "$dest" ]]; then
-    if [[ "$force" == "1" ]]; then
-      # Use rm -rf because $dest may be a directory we're replacing with a
-      # symlink (e.g. a real ~/.config/zsh directory being replaced by a link
-      # to $DOTFILES/config/zsh). Caller is expected to have backed up first.
-      rm -rf "$dest"
-      printf "  %s!%s %-22s %s(removed existing)%s\n" "$YELLOW" "$RESET" "$label" "$DIM" "$RESET"
-    else
-      log_warn "$label: $display exists - skipping (run 'dot backup && dot link --force' to replace)"
-      return
-    fi
-  fi
-  mkdir -p "$(dirname "$dest")"
-  ln -s "$src" "$dest"
-  printf "  %s+%s %-22s %s→ %s%s\n" "$GREEN" "$RESET" "$label" "$DIM" "$display" "$RESET"
-}
-
-do_unlink() {
-  local src="$1" dest="$2" label="$3"
-  local display; display="$(home_tilde "$dest")"
-
-  if [[ -L "$dest" && "$(readlink "$dest")" == "$src" ]]; then
-    rm "$dest"
-    printf "  %s-%s %-22s %s%s%s\n" "$RED" "$RESET" "$label" "$DIM" "$display" "$RESET"
-  elif [[ -L "$dest" ]]; then
-    log_warn "$label: $display is a symlink but not ours - skipping"
-  elif [[ -e "$dest" ]]; then
-    log_warn "$label: $display exists but is not our symlink - skipping"
-  fi
+cmd_backup() {
+  require_stow
+  local list; list="$(conflicts || true)"
+  [[ -z "$list" ]] && { ok "Nothing to back up."; return; }
+  local dir="$HOME/.dotfiles-backup"; mkdir -p "$dir"
+  local archive="$dir/dotfiles_backup_$(date +%Y%m%d-%H%M%S).tar.gz"
+  ( cd "$HOME" && tar -czf "$archive" $list )
+  ok "Backed up conflicts -> ${archive/#$HOME/~}"
 }
 
 cmd_link() {
-  local force=0 pkg="all"
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -f|--force) force=1; shift ;;
-      -*)         log_error "Unknown option: $1"; return 1 ;;
-      *)          pkg="$1"; shift ;;
-    esac
-  done
-
-  local title_suffix=""
-  [[ "$pkg" != "all" ]] && title_suffix=" ${DIM}─ ${pkg}${RESET}"
-  [[ "$force" == "1" ]] && title_suffix+=" ${DIM}(--force)${RESET}"
-  fmt_title "dot link${title_suffix}"
-
-  local any=0
-  while IFS=$'\t' read -r src dest label; do
-    do_link "$src" "$dest" "$label" "$force"
-    any=1
-  done < <(enumerate "$pkg")
-  if [[ "$any" == 0 ]]; then
-    log_error "No matching packages for '$pkg'"
-    return 1
-  fi
-  echo
-}
-
-cmd_unlink() {
-  local pkg="${1:-all}"
-  fmt_title "dot unlink${pkg:+ ${DIM}─ ${pkg}${RESET}}"
-  local any=0
-  while IFS=$'\t' read -r src dest label; do
-    do_unlink "$src" "$dest" "$label"
-    any=1
-  done < <(enumerate "$pkg")
-  if [[ "$any" == 0 ]]; then
-    log_error "No matching packages for '$pkg'"
-    return 1
-  fi
-  echo
-}
-
-# -----------------------------------------------------------------------------
-# backup - tar everything we'd overwrite into ~/.dotfiles-backup/<timestamp>.tar.gz
-# -----------------------------------------------------------------------------
-cmd_backup() {
-  local backup_dir="$HOME/.dotfiles-backup"
-  local ts; ts="$(date +%Y%m%d-%H%M%S)"
-  local archive="$backup_dir/dotfiles_backup_$ts.tar.gz"
-
-  mkdir -p "$backup_dir"
-
-  fmt_title "dot backup"
-
-  local tmpfile; tmpfile="$(mktemp)"
-
-  # Collect destinations that currently exist as real files (not our symlinks)
-  while IFS=$'\t' read -r src dest label; do
-    if [[ -L "$dest" && "$(readlink "$dest")" == "$src" ]]; then
-      continue  # already our symlink - nothing to back up
-    elif [[ -e "$dest" || -L "$dest" ]]; then
-      # Store path relative to $HOME so tar -C $HOME extracts cleanly later
-      printf "%s\n" "${dest#$HOME/}" >>"$tmpfile"
-      log_info "would back up $(home_tilde "$dest")"
+  require_stow
+  local force=0
+  [[ "${1:-}" == "-f" || "${1:-}" == "--force" ]] && force=1
+  if [[ "$force" == 1 ]]; then
+    local list; list="$(conflicts || true)"
+    if [[ -n "$list" ]]; then
+      cmd_backup
+      local p
+      while IFS= read -r p; do [[ -n "$p" ]] && rm -rf "${HOME:?}/$p" && warn "replaced $p"; done <<< "$list"
     fi
-  done < <(enumerate "all")
-
-  if [[ ! -s "$tmpfile" ]]; then
-    rm -f "$tmpfile"
-    log_ok "Nothing to back up."
-    echo
-    return
   fi
-
-  tar -czf "$archive" -C "$HOME" -T "$tmpfile"
-  rm -f "$tmpfile"
-  log_ok "Backup written: $(fmt_path "$(home_tilde "$archive")")"
-  echo
+  info "Stowing home/ into \$HOME"
+  stow -R -v -d "$DOTFILES" -t "$HOME" "$PKG"
+  ok "Linked."
 }
 
-# -----------------------------------------------------------------------------
-# clean - remove broken symlinks that point inside $DOTFILES
-# -----------------------------------------------------------------------------
-cmd_clean() {
-  fmt_title "dot clean"
-  local removed=0
+cmd_unlink() { require_stow; info "Unstowing home/"; stow -D -v -d "$DOTFILES" -t "$HOME" "$PKG"; ok "Unlinked."; }
 
-  # Scan $HOME top-level and $XDG_CONFIG_HOME for broken symlinks pointing into $DOTFILES
-  local roots=("$HOME" "$XDG_CONFIG_HOME")
-  local root link target
-  for root in "${roots[@]}"; do
+cmd_clean() {
+  local removed=0 root link target
+  for root in "$HOME" "$XDG_CONFIG_HOME"; do
     [[ -d "$root" ]] || continue
-    # -maxdepth 1 keeps it cheap and avoids walking into project dirs
     while IFS= read -r -d '' link; do
       target="$(readlink "$link" || true)"
-      if [[ "$target" == "$DOTFILES"* && ! -e "$link" ]]; then
-        rm "$link"
-        log_ok "removed broken symlink $(home_tilde "$link")"
-        removed=$((removed + 1))
+      if [[ ( "$target" == *"/.dotfiles/"* || "$target" == "$DOTFILES"* ) && ! -e "$link" ]]; then
+        rm "$link"; ok "removed broken symlink ${link/#$HOME/~}"; removed=$((removed + 1))
       fi
     done < <(find "$root" -maxdepth 1 -type l -print0 2>/dev/null)
   done
+  [[ "$removed" == 0 ]] && ok "No broken symlinks found."
+}
 
-  if [[ "$removed" == 0 ]]; then
-    log_ok "No broken symlinks found."
-  fi
+# ----------------------------------------------------------------------------- Packages
+# Map a manifest package name to the binary that proves it's installed.
+pkg_bin_name() {
+  case "$1" in
+    ripgrep)                  echo rg ;;
+    bat)                      [[ "$OS" == macos ]] && echo bat || echo batcat ;;
+    fd|fd-find)               [[ "$OS" == macos ]] && echo fd || echo fdfind ;;
+    visual-studio-code|vscode) echo code ;;
+    *)                        echo "$1" ;;
+  esac
+}
+
+pkg_is_installed() {
+  local p="$1"
+  [[ "$p" == nvm ]] && { [[ -d "$HOME/.nvm" ]]; return; }
+  command -v "$(pkg_bin_name "$p")" >/dev/null 2>&1
+}
+
+cmd_list() {
+  detect_os
+  local groups
+  if [[ "$OS" == "macos" ]]; then groups=("brew:BREW_PKGS" "cask:BREW_CASKS")
+  else groups=("apt:APT_PKGS" "curl:CURL_PKGS"); fi
+  local g name arr p
+  for g in "${groups[@]}"; do
+    name="${g%%:*}"; arr="${g#*:}"
+    printf "\n%s%s%s\n" "$C_B" "$name" "$C_R"
+    eval "local items=( \"\${$arr[@]}\" )"
+    for p in "${items[@]}"; do
+      if pkg_is_installed "$p"; then printf "  %s\xe2\x9c\x93%s %s\n" "$C_G" "$C_R" "$p"
+      else printf "  %s\xe2\x80\x93%s %s\n" "$C_Y" "$C_R" "$p"; fi
+    done
+  done
   echo
 }
 
-# -----------------------------------------------------------------------------
-# Dispatch
-# -----------------------------------------------------------------------------
+cmd_add() {
+  local pkg="${1:-}"; [[ -z "$pkg" ]] && { err "usage: dot add <pkg>"; exit 1; }
+  detect_os
+  local mf
+  if declare -F "install_$pkg" >/dev/null 2>&1; then
+    "install_$pkg"                 # tool has a custom installer (curl/script)
+    mf="$PKG_DIR/curl.txt"
+  else
+    pkg_install_one "$pkg"         # OS package manager
+    mf="$(manifest_file_for_os)"
+  fi
+  if grep -qxF "$pkg" "$mf" 2>/dev/null; then ok "$pkg already in $(basename "$mf")"
+  else printf '%s\n' "$pkg" >> "$mf"; ok "added $pkg -> $(basename "$mf")"; fi
+}
+
+cmd_remove() {
+  local pkg="${1:-}"; [[ -z "$pkg" ]] && { err "usage: dot remove <pkg>"; exit 1; }
+  detect_os
+  # Custom-installer tools (curl.txt) can't be auto-uninstalled - just untrack.
+  if grep -qxF "$pkg" "$PKG_DIR/curl.txt" 2>/dev/null; then
+    grep -vxF "$pkg" "$PKG_DIR/curl.txt" > "$PKG_DIR/curl.txt.tmp" && mv "$PKG_DIR/curl.txt.tmp" "$PKG_DIR/curl.txt"
+    warn "$pkg removed from manifest; uninstall the binary yourself (custom installer)."
+    return
+  fi
+  pkg_remove_one "$pkg"
+  local mf; mf="$(manifest_file_for_os)"
+  if grep -qxF "$pkg" "$mf" 2>/dev/null; then
+    grep -vxF "$pkg" "$mf" > "$mf.tmp" && mv "$mf.tmp" "$mf"; ok "removed $pkg from $(basename "$mf")"
+  else ok "$pkg was not in $(basename "$mf")"; fi
+}
+
+cmd_update() {
+  detect_os
+  update_packages
+  info "git pull"; git -C "$DOTFILES" pull --ff-only 2>/dev/null || warn "git pull skipped (dirty or no upstream)"
+  cmd_link
+}
+
+# ----------------------------------------------------------------------------- init / doctor
+cmd_init() {
+  info "Bootstrapping dotfiles from $DOTFILES"
+  check_prereqs
+  detect_os
+  info "Detected OS: $OS"
+  install_prereqs
+  chmod +x "$DOTFILES/bin/"* 2>/dev/null || true
+  info "Snapshotting shell rc files (safety net)..."; snapshot_shell_configs
+  info "Linking config (replacing any non-symlink originals)..."; cmd_link --force
+  install_antidote
+  setup_local_files
+  setup_vscode
+  install_fonts
+  install_wezterm_windows_stub
+  set_default_shell
+  echo
+  ok "Done. Open a new shell to pick up the changes."
+  echo "    Backups (if any): ~/.dotfiles-backup/"
+  echo "    Day-to-day: dot list, dot add <pkg>, dot update, dot doctor"
+}
+
+cmd_doctor() {
+  detect_os
+  info "doctor - OS: $OS, DOTFILES: ${DOTFILES/#$HOME/~}"
+
+  local t
+  for t in git curl stow zsh; do
+    command -v "$t" >/dev/null 2>&1 && ok "$t present" || warn "$t MISSING"
+  done
+
+  # Symlinks: derived from the stow tree - every tracked file under home/ must
+  # resolve to its repo copy at the matching $HOME path (covers anything you add,
+  # e.g. ~/.pi later, with no hardcoding). `-ef` is portable (no readlink -f).
+  local f rel linked=0 broken=()
+  while IFS= read -r -d '' f; do
+    rel="${f#$DOTFILES/home/}"
+    if [[ "$HOME/$rel" -ef "$f" ]]; then linked=$((linked + 1)); else broken+=("~/$rel"); fi
+  done < <(find "$DOTFILES/home" -type f -print0)
+  if [[ ${#broken[@]} -eq 0 ]]; then ok "all $linked tracked files linked into \$HOME"
+  else warn "${#broken[@]} tracked file(s) NOT linked:"; printf '    %s\n' "${broken[@]}"; fi
+
+  # Stow conflicts / broken links
+  local c; c="$(conflicts || true)"
+  [[ -z "$c" ]] && ok "stow: no conflicts" || { warn "stow conflicts:"; printf '    %s\n' $c; }
+
+  # Missing packages
+  local groups arr p missing=()
+  if [[ "$OS" == "macos" ]]; then groups=(BREW_PKGS BREW_CASKS); else groups=(APT_PKGS CURL_PKGS); fi
+  for arr in "${groups[@]}"; do
+    eval "local items=( \"\${$arr[@]}\" )"
+    for p in "${items[@]}"; do pkg_is_installed "$p" || missing+=("$p"); done
+  done
+  [[ ${#missing[@]} -eq 0 ]] && ok "all manifest packages installed" \
+    || warn "missing packages: ${missing[*]}  (run: dot init  or  dot add <pkg>)"
+}
+
+# ----------------------------------------------------------------------------- dispatch
 main() {
   local cmd="${1:-help}"; shift || true
   case "$cmd" in
-    help|-h|--help) usage ;;
-    link)           cmd_link   "$@" ;;
-    unlink)         cmd_unlink "${1:-all}" ;;
-    backup)         cmd_backup ;;
-    clean)          cmd_clean ;;
-    *)
-      log_error "Unknown command: $cmd"
-      usage
-      exit 1
-      ;;
+    init)            cmd_init ;;
+    add)             cmd_add "${1:-}" ;;
+    remove|rm)       cmd_remove "${1:-}" ;;
+    update|upgrade)  cmd_update ;;
+    list|ls)         cmd_list ;;
+    link)            cmd_link "$@" ;;
+    unlink)          cmd_unlink ;;
+    backup)          cmd_backup ;;
+    clean)           cmd_clean ;;
+    doctor)          cmd_doctor ;;
+    help|-h|--help)  usage ;;
+    *) err "Unknown command: $cmd"; usage; exit 1 ;;
   esac
 }
 

@@ -9,7 +9,7 @@ else
   # Search common project locations - tune to taste
   selected=$(find \
     ~/projects \
-    "${DOTFILES:-$HOME/projects/dotfiles}" \
+    "${DOTFILES:-$HOME/.dotfiles}" \
     -mindepth 1 -maxdepth 2 -type d 2>/dev/null | fzf)
 fi
 

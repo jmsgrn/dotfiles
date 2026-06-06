@@ -1,0 +1,14 @@
+# Debian/Ubuntu/WSL packages installed with `apt-get install`. One per line.
+# Note: on Debian `bat` is `batcat` and `fd-find` is `fdfind` (both aliased in aliases.zsh).
+# `dot add` appends here on Linux/WSL.
+zsh
+tmux
+git
+stow
+fzf
+ripgrep
+jq
+curl
+bat
+fd-find
+unzip

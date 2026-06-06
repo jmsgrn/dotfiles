@@ -1,0 +1,10 @@
+# Linux: tools installed via curl/custom installers (apt ships none or too-old).
+# Each name maps to an `install_<name>` function in bin/lib/bootstrap.sh.
+starship
+zoxide
+eza
+gh
+nvm
+wezterm
+vscode
+pi

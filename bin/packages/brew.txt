@@ -1,0 +1,15 @@
+# macOS packages installed with `brew install`. One per line. `dot add` appends here on macOS.
+zsh
+tmux
+git
+stow
+fzf
+ripgrep
+jq
+bat
+fd
+starship
+zoxide
+eza
+gh
+unzip
